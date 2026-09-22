@@ -1,1 +1,576 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ShadowFaction</title>
+
+<style>
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    background: #080b14;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    overflow: hidden;
+}
+
+h1 {
+    color: #61dafb;
+    letter-spacing: 3px;
+    margin: 14px 0 8px;
+    font-size: clamp(24px, 5vw, 38px);
+}
+
+#hud {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    max-width: 900px;
+    margin: 0 auto 10px;
+    padding: 0 12px;
+    font-size: 16px;
+    font-weight: bold;
+}
+
+#gameCanvas {
+    display: block;
+    width: min(900px, 96vw);
+    height: auto;
+    aspect-ratio: 3 / 2;
+    margin: auto;
+    background: #0d1220;
+    border: 2px solid #273653;
+    border-radius: 10px;
+    box-shadow: 0 0 25px #172744;
+    touch-action: none;
+}
+
+#message {
+    margin-top: 12px;
+    color: #aab6d3;
+    font-size: 14px;
+}
+
+button {
+    margin-top: 12px;
+    padding: 10px 22px;
+    border: none;
+    border-radius: 7px;
+    background: #2463eb;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #174bc0;
+}
+
+#restart {
+    display: none;
+}
+</style>
+</head>
+
+<body>
+
+<h1>SHADOWFACTION</h1>
+
+<div id="hud">
+    <span id="health">❤️ Health: 100</span>
+    <span id="score">⭐ Score: 0</span>
+    <span id="wave">Wave: 1</span>
+</div>
+
+<canvas id="gameCanvas" width="900" height="600"></canvas>
+
+<div id="message">
+    WASD / Arrow Keys = Move | Mouse Click = Attack
+</div>
+
+<button id="restart">Restart Game</button>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+const healthText = document.getElementById("health");
+const scoreText = document.getElementById("score");
+const waveText = document.getElementById("wave");
+const restartButton = document.getElementById("restart");
+
+const W = canvas.width;
+const H = canvas.height;
+
+let keys = {};
+let mouse = { x: W / 2, y: H / 2 };
+let mouseDown = false;
+
+let score = 0;
+let wave = 1;
+let gameOver = false;
+let spawnTimer = 0;
+let attackCooldown = 0;
+let lastTime = 0;
+
+const player = {
+    x: W / 2,
+    y: H / 2,
+    radius: 18,
+    speed: 260,
+    health: 100,
+    maxHealth: 100,
+    angle: 0
+};
+
+let enemies = [];
+let bullets = [];
+
+// Keyboard controls
+window.addEventListener("keydown", function(e) {
+    keys[e.key.toLowerCase()] = true;
+
+    if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(e.key.toLowerCase())) {
+        e.preventDefault();
+    }
+});
+
+window.addEventListener("keyup", function(e) {
+    keys[e.key.toLowerCase()] = false;
+});
+
+// Mouse controls
+canvas.addEventListener("mousemove", function(e) {
+    const rect = canvas.getBoundingClientRect();
+
+    mouse.x = (e.clientX - rect.left) * W / rect.width;
+    mouse.y = (e.clientY - rect.top) * H / rect.height;
+});
+
+canvas.addEventListener("mousedown", function(e) {
+    if (e.button === 0) {
+        mouseDown = true;
+    }
+});
+
+window.addEventListener("mouseup", function(e) {
+    if (e.button === 0) {
+        mouseDown = false;
+    }
+});
+
+// Touch / click position
+canvas.addEventListener("touchstart", function(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+
+    mouse.x = (touch.clientX - rect.left) * W / rect.width;
+    mouse.y = (touch.clientY - rect.top) * H / rect.height;
+
+    mouseDown = true;
+}, { passive: false });
+
+canvas.addEventListener("touchmove", function(e) {
+    e.preventDefault();
+    const touch = e.touches[0];
+    const rect = canvas.getBoundingClientRect();
+
+    mouse.x = (touch.clientX - rect.left) * W / rect.width;
+    mouse.y = (touch.clientY - rect.top) * H / rect.height;
+}, { passive: false });
+
+window.addEventListener("touchend", function() {
+    mouseDown = false;
+});
+
+// Utility function
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function distance(a, b) {
+    return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+// Spawn enemy
+function spawnEnemy() {
+    const side = Math.floor(Math.random() * 4);
+
+    let x, y;
+
+    if (side === 0) {
+        x = Math.random() * W;
+        y = -30;
+    } else if (side === 1) {
+        x = W + 30;
+        y = Math.random() * H;
+    } else if (side === 2) {
+        x = Math.random() * W;
+        y = H + 30;
+    } else {
+        x = -30;
+        y = Math.random() * H;
+    }
+
+    enemies.push({
+        x: x,
+        y: y,
+        radius: 15,
+        speed: 65 + wave * 5,
+        health: 2,
+        damageTimer: 0
+    });
+}
+
+// Shoot bullet
+function shoot() {
+    if (attackCooldown > 0 || gameOver) {
+        return;
+    }
+
+    const dx = mouse.x - player.x;
+    const dy = mouse.y - player.y;
+    const length = Math.hypot(dx, dy);
+
+    if (length === 0) {
+        return;
+    }
+
+    bullets.push({
+        x: player.x,
+        y: player.y,
+        vx: dx / length * 520,
+        vy: dy / length * 520,
+        radius: 5,
+        life: 1.5
+    });
+
+    attackCooldown = 0.18;
+}
+
+// Update player
+function updatePlayer(dt) {
+    let dx = 0;
+    let dy = 0;
+
+    if (keys["w"] || keys["arrowup"]) {
+        dy -= 1;
+    }
+
+    if (keys["s"] || keys["arrowdown"]) {
+        dy += 1;
+    }
+
+    if (keys["a"] || keys["arrowleft"]) {
+        dx -= 1;
+    }
+
+    if (keys["d"] || keys["arrowright"]) {
+        dx += 1;
+    }
+
+    const length = Math.hypot(dx, dy);
+
+    if (length > 0) {
+        dx /= length;
+        dy /= length;
+    }
+
+    player.x += dx * player.speed * dt;
+    player.y += dy * player.speed * dt;
+
+    player.x = clamp(player.x, player.radius, W - player.radius);
+    player.y = clamp(player.y, player.radius, H - player.radius);
+
+    player.angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+}
+
+// Update bullets
+function updateBullets(dt) {
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        const bullet = bullets[i];
+
+        bullet.x += bullet.vx * dt;
+        bullet.y += bullet.vy * dt;
+        bullet.life -= dt;
+
+        if (
+            bullet.life <= 0 ||
+            bullet.x < -20 ||
+            bullet.x > W + 20 ||
+            bullet.y < -20 ||
+            bullet.y > H + 20
+        ) {
+            bullets.splice(i, 1);
+        }
+    }
+}
+
+// Update enemies
+function updateEnemies(dt) {
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        const enemy = enemies[i];
+
+        const dx = player.x - enemy.x;
+        const dy = player.y - enemy.y;
+        const length = Math.hypot(dx, dy);
+
+        if (length > 0) {
+            enemy.x += dx / length * enemy.speed * dt;
+            enemy.y += dy / length * enemy.speed * dt;
+        }
+
+        enemy.damageTimer -= dt;
+
+        if (distance(player, enemy) < player.radius + enemy.radius) {
+            if (enemy.damageTimer <= 0) {
+                player.health -= 10;
+                enemy.damageTimer = 0.6;
+
+                if (player.health <= 0) {
+                    player.health = 0;
+                    endGame();
+                }
+            }
+        }
+    }
+}
+
+// Bullet and enemy collisions
+function checkCollisions() {
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        const bullet = bullets[i];
+
+        for (let j = enemies.length - 1; j >= 0; j--) {
+            const enemy = enemies[j];
+
+            if (distance(bullet, enemy) < bullet.radius + enemy.radius) {
+                enemy.health -= 1;
+                bullets.splice(i, 1);
+
+                if (enemy.health <= 0) {
+                    enemies.splice(j, 1);
+                    score += 10;
+
+                    if (score > 0 && score % 100 === 0) {
+                        wave++;
+                    }
+                }
+
+                break;
+            }
+        }
+    }
+}
+
+// Draw background
+function drawBackground() {
+    ctx.fillStyle = "#0d1220";
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.strokeStyle = "#17243b";
+    ctx.lineWidth = 1;
+
+    for (let x = 0; x <= W; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, H);
+        ctx.stroke();
+    }
+
+    for (let y = 0; y <= H; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(W, y);
+        ctx.stroke();
+    }
+}
+
+// Draw player
+function drawPlayer() {
+    ctx.save();
+
+    ctx.translate(player.x, player.y);
+    ctx.rotate(player.angle);
+
+    // Shadow aura
+    ctx.beginPath();
+    ctx.arc(0, 0, 27, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(60, 130, 255, 0.12)";
+    ctx.fill();
+
+    // Body
+    ctx.beginPath();
+    ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#2878ff";
+    ctx.fill();
+
+    ctx.strokeStyle = "#9bc4ff";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Weapon direction
+    ctx.fillStyle = "#d5e8ff";
+    ctx.fillRect(10, -4, 22, 8);
+
+    ctx.restore();
+}
+
+// Draw enemies
+function drawEnemies() {
+    enemies.forEach(function(enemy) {
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#e43b55";
+        ctx.fill();
+
+        ctx.strokeStyle = "#ff9aa8";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Enemy health
+        ctx.fillStyle = "#32131b";
+        ctx.fillRect(enemy.x - 16, enemy.y - 25, 32, 4);
+
+        ctx.fillStyle = "#ff596b";
+        ctx.fillRect(enemy.x - 16, enemy.y - 25, 16 * enemy.health, 4);
+    });
+}
+
+// Draw bullets
+function drawBullets() {
+    bullets.forEach(function(bullet) {
+        ctx.beginPath();
+        ctx.arc(bullet.x, bullet.y, bullet.radius, 0, Math.PI * 2);
+        ctx.fillStyle = "#ffe082";
+        ctx.fill();
+    });
+}
+
+// Draw crosshair
+function drawCrosshair() {
+    ctx.beginPath();
+    ctx.arc(mouse.x, mouse.y, 10, 0, Math.PI * 2);
+    ctx.strokeStyle = "#9bc4ff";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(mouse.x - 15, mouse.y);
+    ctx.lineTo(mouse.x + 15, mouse.y);
+    ctx.moveTo(mouse.x, mouse.y - 15);
+    ctx.lineTo(mouse.x, mouse.y + 15);
+    ctx.stroke();
+}
+
+// Update HUD
+function updateHUD() {
+    healthText.textContent = "❤️ Health: " + player.health;
+    scoreText.textContent = "⭐ Score: " + score;
+    waveText.textContent = "Wave: " + wave;
+}
+
+// Game over
+function endGame() {
+    gameOver = true;
+    restartButton.style.display = "inline-block";
+}
+
+// Restart
+function restartGame() {
+    player.x = W / 2;
+    player.y = H / 2;
+    player.health = 100;
+
+    score = 0;
+    wave = 1;
+    spawnTimer = 0;
+    attackCooldown = 0;
+    gameOver = false;
+
+    enemies = [];
+    bullets = [];
+
+    restartButton.style.display = "none";
+    updateHUD();
+}
+
+restartButton.addEventListener("click", restartGame);
+
+// Main game update
+function update(dt) {
+    if (gameOver) {
+        return;
+    }
+
+    updatePlayer(dt);
+
+    if (mouseDown) {
+        shoot();
+    }
+
+    updateBullets(dt);
+    updateEnemies(dt);
+    checkCollisions();
+
+    attackCooldown -= dt;
+    spawnTimer -= dt;
+
+    if (spawnTimer <= 0) {
+        spawnEnemy();
+        spawnTimer = Math.max(0.35, 1.1 - wave * 0.04);
+    }
+
+    updateHUD();
+}
+
+// Main game draw
+function draw() {
+    drawBackground();
+    drawEnemies();
+    drawBullets();
+    drawPlayer();
+    drawCrosshair();
+
+    if (gameOver) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+        ctx.fillRect(0, 0, W, H);
+
+        ctx.textAlign = "center";
+
+        ctx.fillStyle = "#ff596b";
+        ctx.font = "bold 52px Arial";
+        ctx.fillText("GAME OVER", W / 2, H / 2 - 30);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "20px Arial";
+        ctx.fillText("Final Score: " + score, W / 2, H / 2 + 20);
+
+        ctx.textAlign = "start";
+    }
+}
+
+// Game loop
+function gameLoop(timestamp) {
+    const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+    lastTime = timestamp;
+
+    update(dt);
+    draw();
+
+    requestAnimationFrame(gameLoop);
+}
+
+updateHUD();
+requestAnimationFrame(gameLoop);
+</script>
+
+</body>
+</html>
