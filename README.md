@@ -24,7 +24,7 @@ The goal is simple:
 * Mouse and keyboard controls
 * Dark shadow-themed game design
 
-## 🎮 Controls
+##  Controls
 
 | Control        | Action           |
 | -------------- | ---------------- |
@@ -51,7 +51,7 @@ The goal is simple:
 
 You can also use the **Live Server** extension in VS Code.
 
-## 📚 What I Learned
+##  What I Learned
 
 While making ShadowFaction, I learned about:
 
@@ -64,7 +64,7 @@ While making ShadowFaction, I learned about:
 * Basic game physics
 * Updating a game continuously using JavaScript
 
-## 🔮 Future Plans
+##  Future Plans
 
 I would like to add more features in future versions, such as:
 
