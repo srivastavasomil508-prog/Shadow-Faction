@@ -82,3 +82,6 @@ I would like to add more features in future versions, such as:
 **ShadowFaction**
 Made as a learning project using HTML, CSS and JavaScript. 
 
+
+https://cdn.hackclub.com/01a0d275-9bd3-7113-b30b-b85d7e4b80c2/Screenshot_20260924_132754.jpg
+
