@@ -84,7 +84,9 @@ Made as a learning project using HTML, CSS and JavaScript.
 
 
 https://cdn.hackclub.com/01a0d275-9bd3-7113-b30b-b85d7e4b80c2/Screenshot_20260924_132754.jpg
- Tech Stack
+ 
+ 
+ # Tech Stack
 
 - HTML5 — Game structure and HTML Canvas
 - CSS3 — Game interface, layout and styling
